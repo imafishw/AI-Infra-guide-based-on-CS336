@@ -1,0 +1,20 @@
+[project]
+name = "ai-infra-guide"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "imafishw", email = "2916121156@qq.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.5.4",
+    "torch>=2.14.1",
+]
+
+[project.scripts]
+ai-infra-guide = "ai_infra_guide:main"
+
+[build-system]
+requires = ["uv_build>=0.12.15,<0.13.0"]
+build-backend = "uv_build"

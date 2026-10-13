@@ -1,0 +1,43 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Test / lint cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# AI / ML outputs
+checkpoints/
+outputs/
+runs/
+wandb/
+
+# Model weights
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Large datasets
+data/
+
+# Temporary files
+*.log
+*.tmp

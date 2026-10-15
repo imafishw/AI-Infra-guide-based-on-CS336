@@ -1,3 +1,4 @@
+# 数据流程可以看ipynb
 class BasicBPE:
     def __init__(self, vocab_size=276):
         """

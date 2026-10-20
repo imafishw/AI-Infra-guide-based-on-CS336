@@ -4,7 +4,10 @@ The base class also contains the (common) save/load functionality.
 It would be possible to be a lot more strict about the interface and
 e.g. isolating all regex/pattern parts to the RegexTokenizer, but
 some concessions are made for simplicity.
+
+Author: anderj karparthy
 """
+
 import unicodedata
 
 # -----------------------------------------------------------------------------

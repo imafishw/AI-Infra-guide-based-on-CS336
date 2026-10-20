@@ -28,6 +28,9 @@ checkpoints/
 outputs/
 runs/
 wandb/
+data/
+# 模型文件夹
+models/
 
 # Model weights
 *.pt

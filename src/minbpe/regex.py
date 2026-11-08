@@ -9,6 +9,8 @@ Unlike BasicTokenizer:
 - RegexTokenizer handles optional special tokens.
 """
 
+from typing import Literal
+
 import regex as re
 from .base import Tokenizer, get_stats, merge
 
@@ -53,7 +55,7 @@ class RegexTokenizer(Tokenizer):
                 # passing in stats will update it in place, adding up counts
                 get_stats(chunk_ids, stats)
             # find the pair with the highest count
-            pair = max(stats, key=stats.get)
+            pair = max(stats, key=stats.get) # type: ignore
             # mint a new token: assign it the next available id
             idx = 256 + i
             # replace all occurrences of pair in ids with idx
@@ -120,7 +122,11 @@ class RegexTokenizer(Tokenizer):
             ids.extend(chunk_ids)
         return ids
 
-    def encode(self, text, allowed_special="none_raise"):
+    def encode(
+        self,
+        text: str,
+        allowed_special: Literal["all", "none", "none_raise"] | set[str] = "none_raise",
+    ) -> list[int]:
         """
         Unlike encode_ordinary, this function handles special tokens.
         allowed_special: can be "all"|"none"|"none_raise" or a custom set of special tokens

@@ -9,10 +9,14 @@ class Embedding(nn.Module):
     def __init__(self, vocab_size: int, d_model: int):
         super().__init__()
         # TODO: Initialize embedding weights
+        self.weights = nn.Parameter(torch.empty(vocab_size, d_model))
+          # 示例初始化；如果作业规定了初始化方式，按作业要求调整。
+        # 正态分布
+        nn.init.normal_(self.weights, mean=0.0, std=0.02)
 
     def forward(self, token_ids: Tensor) -> Tensor:
         # TODO: [B, T] -> [B, T, d_model]
-        raise NotImplementedError
+        return self.weights[token_ids]
 
 
 class RMSNorm(nn.Module):

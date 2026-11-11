@@ -171,14 +171,23 @@ class MultiHeadSelfAttention(nn.Module):
         return self.out_proj(out)         # -> [B,T,D]，混合各头特征
         
 
-
+# FFNSwiGLU
 class SwiGLU(nn.Module):
-    def __init__(self, config: TransformerConfig):
+    def __init__(self, d_model:int, d_ff: int):
         super().__init__()
-
+          # 两条分支：分别生成门控信号和待调节的特征
+        self.gate_proj = nn.Linear(d_model,d_ff,bias = False)
+        self.up_proj = nn.Linear(d_model, d_ff, bias=False)
+          # 将隐藏特征投影回 d_model，便于残差相加
+        self.down_proj = nn.Linear(d_ff, d_model, bias=False)
     def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
-
+        # x: [B,T,d_model]
+        gate = self.gate_proj(x) # B T d_ff
+        up = self.up_proj(x)
+        # SiLU(z) = z * sigmoid(z)
+        gate = gate * torch.sigmoid(gate)
+        hidden = gate*up # 逐个元素门控 [B,T,d_ff]
+        return self.down_proj(hidden)   # [B, T, d_model]
 
 class TransformerBlock(nn.Module):
     def __init__(self, config: TransformerConfig):

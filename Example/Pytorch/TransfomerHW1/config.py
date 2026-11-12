@@ -6,3 +6,4 @@ from dataclasses import dataclass
 class TransformerConfig:
     vocab_size: int
     d_model: int = 256
+    n_heads: int = 8

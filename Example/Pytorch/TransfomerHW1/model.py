@@ -81,8 +81,8 @@ class RotaryPositionalEmbedding(nn.Module):
             raise ValueError("输入最后一维必须等于 d_k")
 
         # 4. 根据位置查表：[T, d_k/2]
-        cos = self.cos_cached[positions].to(dtype=x.dtype)
-        sin = self.sin_cached[positions].to(dtype=x.dtype)
+        cos = self.cos_cached [positions].to(dtype=x.dtype) # type: ignore
+        sin = self.sin_cached[positions].to(dtype=x.dtype) # type: ignore
 
         # 5. 把每一对中的第一个数、第二个数分别取出来
         # [B, H, T, d_k] -> [B, H, T, d_k/2]
@@ -189,12 +189,25 @@ class SwiGLU(nn.Module):
         hidden = gate*up # 逐个元素门控 [B,T,d_ff]
         return self.down_proj(hidden)   # [B, T, d_model]
 
+# 缺少残差连接 ex. 
 class TransformerBlock(nn.Module):
     def __init__(self, config: TransformerConfig):
         super().__init__()
+         # 对每个 token 的 d_model 个特征做归一化
+        self.attn_norm = RMSNorm(config.d_model)
 
+        # 接收和输出的形状都是 [B, T, d_model]
+        self.attn = MultiHeadSelfAttention(
+            d_model=config.d_model,
+            n_heads=config.n_heads,
+        )
+        self.ffn_norm = RMSNorm(config.d_model)
+        
     def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
+        attention_output = self.attn(self.attn_norm(x))
+        x = x + attention_output  # 残差连接 resnet
+
+        return x
 
 
 class TransformerLM(nn.Module):

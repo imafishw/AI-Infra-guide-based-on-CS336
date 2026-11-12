@@ -189,7 +189,7 @@ class SwiGLU(nn.Module):
         hidden = gate*up # 逐个元素门控 [B,T,d_ff]
         return self.down_proj(hidden)   # [B, T, d_model]
 
-# 缺少残差连接 ex. 
+
 class TransformerBlock(nn.Module):
     def __init__(self, config: TransformerConfig):
         super().__init__()
@@ -200,27 +200,86 @@ class TransformerBlock(nn.Module):
         self.attn = MultiHeadSelfAttention(
             d_model=config.d_model,
             n_heads=config.n_heads,
+            theta=config.theta,
+            max_seq_len=config.max_seq_len,
         )
         self.ffn_norm = RMSNorm(config.d_model)
-        
+        self.ffn = SwiGLU(
+            d_model=config.d_model,
+            d_ff=config.d_ff,
+        )
     def forward(self, x: Tensor) -> Tensor:
         attention_output = self.attn(self.attn_norm(x))
         x = x + attention_output  # 残差连接 resnet
-
+        feedforward_output = self.ffn(self.ffn_norm(x))
+        x = x + feedforward_output  # 残差连接 resnet
         return x
 
 
 class TransformerLM(nn.Module):
     def __init__(self, config: TransformerConfig):
         super().__init__()
+        self.max_seq_len = config.max_seq_len
+
+        self.embedding = Embedding(
+            vocab_size=config.vocab_size,
+            d_model=config.d_model,
+        )
+         # 每次循环都创建一个新 Block，各层拥有独立参数。
+        # ModuleList 让 PyTorch 正确管理这些层的参数。
+        self.layers = nn.ModuleList([
+            TransformerBlock(config)
+            for _ in range(config.n_layers)
+        ])
+        self.final_norm = RMSNorm(config.d_model)
+        # [B, T, d_model] -> [B, T, vocab_size]
+        self.lm_head = nn.Linear(config.d_model, config.vocab_size, bias=False)
 
     def forward(self, token_ids: Tensor) -> Tensor:
-        # [B, T] -> [B, T, vocab_size]
-        raise NotImplementedError
+        if token_ids.ndim != 2:
+            raise ValueError("token_ids 必须是 [B, T]")
+        
+        if token_ids.shape[1] > self.max_seq_len:
+            raise ValueError("输入序列长度超过 max_seq_len")
+
+        x = self.embedding(token_ids)   # [B, T, d_model]
+
+        for layer in self.layers:
+            x = layer(x)               # [B, T, d_model]
+
+        x = self.final_norm(x)          # [B, T, d_model]
+        logits = self.lm_head(x)        # [B, T, vocab_size]
+
+        return logits
 
 if __name__ == "__main__":
-    config = TransformerConfig(vocab_size=1024, d_model=256)
-    model = Embedding(config.vocab_size,config.d_model)
-    ids = torch.tensor([8,12,8], dtype = torch.long)
-    x = model(ids)
-    print(x)
+    torch.manual_seed(42)
+
+    config = TransformerConfig(
+        vocab_size=1024,
+        d_model=256,
+        n_heads=8,
+        d_ff=704,
+        n_layers=2,
+        max_seq_len=128,
+    )
+    device = torch.device(config.device)
+    model = TransformerLM(config).to(device)
+
+    # 每条序列 17 个 token，用前 16 个预测后 16 个
+    tokens = torch.randint(0, config.vocab_size, (2, 17), device=device)
+    inputs = tokens[:, :-1]    # [2, 16]
+    targets = tokens[:, 1:]    # [2, 16]
+
+    logits = model(inputs)    # [2, 16, 1024]
+
+    loss = nn.functional.cross_entropy(
+        logits.reshape(-1, config.vocab_size),
+        targets.reshape(-1),
+    )
+
+    loss.backward()
+
+    print("logits shape:", logits.shape)
+    print("loss:", loss.item())
+    print("反向传播完成")

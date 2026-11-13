@@ -1,5 +1,8 @@
 # 配置模型使用时的相关数据
 from dataclasses import dataclass
+from pathlib import Path
+
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 
 # 不需要写构造函数 dataclass的性质
 @dataclass
@@ -18,8 +21,8 @@ class TransformerConfig:
 
 @dataclass
 class TransformerConfigTrain:
-    train_path: str = "data/TinyStories-train.txt"
-    val_path: str = "data/TinyStories-valid.txt"
+    train_path: str = str(DATA_DIR / "TinyStoriesV2-GPT4-train.txt")
+    val_path: str = str(DATA_DIR / "TinyStoriesV2-GPT4-valid.txt")
     tokenizer_path: str = "models/tinystories.model"
     output_dir: str = "checkpoints/tinystories"
     batch_size: int = 4

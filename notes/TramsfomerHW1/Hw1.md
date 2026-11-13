@@ -1065,3 +1065,64 @@ assert torch.isfinite(x.grad).all()
 print("输出形状、因果遮罩和反向传播检查通过")
 
 ```
+
+## 4. 从 logits 到交叉熵损失
+
+### 4.1 输入和答案为什么错开一位？
+
+语言模型学习根据前文预测下一个 token。以一条序列为例：
+
+```text
+原文：    我    喜欢    吃    苹果
+inputs：  我    喜欢    吃
+targets： 喜欢  吃      苹果
+```
+
+```python
+inputs = tokens[:, :-1]  # 所有行，去掉每行最后一个 token
+targets = tokens[:, 1:]  # 所有行，去掉每行第一个 token
+logits = model(inputs)
+```
+
+切片包含起点、不包含终点；`-1` 表示最后一个位置。因果遮罩保证位置 0 只能看到“我”，位置 1 只能看到“我 喜欢”。targets 是预测完成后用于计算损失的答案，不传给模型作为输入。
+
+### 4.2 logits 和 targets 各表示什么？
+
+假设有 2 条序列，每条 3 个预测位置，词表包含 4 个 token：
+
+| 张量 | 形状 | 含义 |
+|---|---|---|
+| logits | `[2, 3, 4]` | 每条序列的每个位置，对 4 个候选 token 分别打分 |
+| targets | `[2, 3]` | 每个位置对应的正确 token ID |
+
+例如 `logits[0, 0] = [0.2, 2.5, -0.3, 0.8]`，四个分数依次对应 token ID 0、1、2、3；`targets[0, 0] = 1` 表示正确答案是 ID 1。logits 是原始分数，可以为负，不是概率；答案是整数 ID，不是一组分数。
+
+### 4.3 cross_entropy 为什么需要 reshape？
+
+```python
+loss = nn.functional.cross_entropy(
+    logits.reshape(-1, config.vocab_size),  # [B, T, V] → [B*T, V]
+    targets.reshape(-1),                   # [B, T] → [B*T]
+)
+```
+
+这里把每个预测位置看作一道题：输入的每行是 V 个候选分数，对应一个正确 ID。`-1` 让 PyTorch 自动计算该维大小；reshape 保留元素顺序和预测与答案的对应关系。
+
+例如 targets 为 `[[1, 2, 3], [2, 0, 1]]` 时：
+
+```text
+logits：[2, 3, 4] → [6, 4]，共六道题，每题四个分数
+targets：[2, 3]   → [6]，答案依次为 [1, 2, 3, 2, 0, 1]
+```
+
+对于正确 ID 为 y 的一道题，交叉熵为：
+
+$$
+L=-\log p_y,\qquad p_y=\frac{e^{z_y}}{\sum_j e^{z_j}}
+$$
+
+其中 z 是 logits，p_y 是正确 token 的预测概率。正确答案概率为 0.8 时，损失约为 0.223；概率为 0.1 时，损失约为 2.303。因此它衡量的不只是预测对错，还包括对正确答案的信心。
+
+`cross_entropy` 内部以数值稳定的方式完成 log-softmax 和正确类别的负对数计算，**直接传 logits，不要提前 softmax**。这里 targets 使用 `torch.long`，ID 范围为 `[0, V-1]`；默认将所有位置的损失取平均，返回一个标量。
+
+最后，`loss.backward()` 计算参数梯度，`optimizer.step()` 才真正更新参数。随机 token 只能检查流程；正式训练需要使用真实文本编码后的 token。

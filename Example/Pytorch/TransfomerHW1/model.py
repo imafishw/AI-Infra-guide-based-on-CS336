@@ -256,11 +256,8 @@ if __name__ == "__main__":
     torch.manual_seed(42)
 
     config = TransformerConfig(
-        vocab_size=1024,
-        d_model=256,
-        n_heads=8,
-        d_ff=704,
-        n_layers=2,
+        vocab_size=4096,
+        device="cpu",
         max_seq_len=128,
     )
     device = torch.device(config.device)
@@ -271,7 +268,10 @@ if __name__ == "__main__":
     inputs = tokens[:, :-1]    # [2, 16]
     targets = tokens[:, 1:]    # [2, 16]
 
-    logits = model(inputs)    # [2, 16, 1024]
+    logits = model(inputs)    # [2, 16, 4096]
+    assert model.embedding.weights.shape == (4096, 512)
+    assert model.lm_head.weight.shape == (4096, 512)
+    assert logits.shape == (2, 16, 4096)
 
     loss = nn.functional.cross_entropy(
         logits.reshape(-1, config.vocab_size),

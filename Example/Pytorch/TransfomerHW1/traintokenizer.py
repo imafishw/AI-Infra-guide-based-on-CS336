@@ -13,6 +13,9 @@
         --output-dir models
 """
 import argparse
+import json
+import hashlib
+import re
 import sys
 import time
 from pathlib import Path
@@ -22,7 +25,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from minbpe import RegexTokenizer
 
-TOTAL_VOCAB_SIZE = 1024
+TOTAL_VOCAB_SIZE = 4096
 EOS = "<|endoftext|>"
 DEFAULT_DATA_DIR = ROOT / "Example" / "data"
 
@@ -97,7 +100,7 @@ def parse_args():
     )
     parser.add_argument(
         "--output-name",
-        default="tinystories",
+        default="tinystories-4096",
         help="输出文件名前缀，会生成 <name>.model 与 <name>.vocab",
     )
     parser.add_argument(
@@ -117,11 +120,26 @@ def parse_args():
         action="store_true",
         help="关闭训练进度显示",
     )
+    parser.add_argument('--valid-file', type=Path, default=DEFAULT_DATA_DIR / 'TinyStoriesV2-GPT4-valid.txt')
+    parser.add_argument('--eval-chars', type=int, default=200_000)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    if not 0 < args.sample_chars <= 100_000_000:
+        raise ValueError('sample-chars 必须在 1 到 1 亿之间：纯 Python 内存/时间护栏，全量请换快速实现')
+    if not 0 < args.eval_chars <= 100_000_000:
+        raise ValueError('eval-chars 必须在 1 到 1 亿之间')
+    if args.valid_file.resolve() == args.train_file.resolve():
+        raise ValueError('验证集不能是训练集')
+    with args.valid_file.open(encoding='utf-8') as f:
+        valid = f.read(args.eval_chars)
+    if not valid:
+        raise ValueError('验证集为空')
+    output_prefix = args.output_dir / args.output_name
+    if any(Path(str(output_prefix) + ext).exists() for ext in ('.model', '.vocab', '.report.json')):
+        raise FileExistsError('输出已存在，请换 --output-name，避免覆盖旧 tokenizer')
 
     if args.vocab_size <= 257:
         raise ValueError("vocab-size 必须大于 257")
@@ -146,6 +164,9 @@ def main():
     progress = None if args.no_progress else BPEProgress(num_merges)
     print(f"开始训练 BPE: 读取 {len(train_text)} 字符，目标 {num_merges} 次合并", flush=True)
     tokenizer = RegexTokenizer()
+    estimate = num_merges * len(train_text) * 7 / (20 * 1_000_000)
+    print(f'粗略训练 ETA: {format_duration(estimate)}（线性外推，依赖硬件和语料）', flush=True)
+    started = time.monotonic()
     tokenizer.train(
         train_text,
         vocab_size=args.vocab_size - 1,
@@ -155,10 +176,34 @@ def main():
 
     # 特殊 token 单独分配 ID。
     tokenizer.register_special_tokens({EOS: eos_id})
+    elapsed = time.monotonic() - started
+    all_ids = set(tokenizer.vocab) | set(tokenizer.special_tokens.values())
+    if all_ids != set(range(args.vocab_size)):
+        raise RuntimeError('最终词表不连续或大小不符合请求')
+    valid_ids = tokenizer.encode(valid, allowed_special={EOS})
+    words = len(re.findall(r"[A-Za-z]+(?:'[A-Za-z]+)*", valid.replace(EOS, ' ')))
+    metrics = dict(bytes_per_token=len(valid.encode('utf-8')) / len(valid_ids),
+                   tokens_per_word=len(valid_ids) / words if words else None,
+                   single_byte_token_ratio=sum(i < 256 for i in valid_ids) / len(valid_ids),
+                   round_trip=tokenizer.decode(valid_ids) == valid)
+    if not metrics['round_trip']:
+        raise RuntimeError('验证集 round-trip 失败')
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     output_prefix = args.output_dir / args.output_name
     tokenizer.save(str(output_prefix))
+    report = dict(train_file=str(args.train_file.resolve()), valid_file=str(args.valid_file.resolve()),
+                  vocab_size=args.vocab_size, requested_sample_chars=args.sample_chars,
+                  sample_chars=len(sample), training_chars=len(train_text), eval_chars=len(valid),
+                  actual_merges=len(tokenizer.merges), training_seconds=elapsed,
+                  estimated_seconds=estimate, estimate_error_seconds=elapsed-estimate,
+                  train_sample_sha256=hashlib.sha256(sample.encode('utf-8')).hexdigest(),
+                  valid_sample_sha256=hashlib.sha256(valid.encode('utf-8')).hexdigest(),
+                  metrics=metrics, metric_definition='UTF-8 bytes and all tokens include EOS; English words exclude EOS',
+                  sampling='file prefix', python_version=sys.version)
+    Path(str(output_prefix) + '.report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps(metrics, ensure_ascii=False, indent=2))
+    print(f'实际训练 {elapsed:.2f}s，预估偏差 {elapsed-estimate:+.2f}s')
 
     # 验证普通文本和 EOS 都能正确往返。
     text = "Once upon a time." + EOS

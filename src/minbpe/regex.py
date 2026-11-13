@@ -35,7 +35,11 @@ class RegexTokenizer(Tokenizer):
         self.special_tokens = {}
         self.inverse_special_tokens = {}
 
-    def train(self, text, vocab_size, verbose=False):
+    def train(self, text, vocab_size, verbose=False, progress=None):
+        """
+        - progress: optional callable(step, total, idx, pair, count) called
+          after each merge, useful for progress bars.
+        """
         assert vocab_size >= 256
         num_merges = vocab_size - 256
 
@@ -63,7 +67,9 @@ class RegexTokenizer(Tokenizer):
             # save the merge
             merges[pair] = idx
             vocab[idx] = vocab[pair[0]] + vocab[pair[1]]
-            # prints
+            # reports
+            if progress is not None:
+                progress(i + 1, num_merges, idx, pair, stats[pair])
             if verbose:
                 print(f"merge {i+1}/{num_merges}: {pair} -> {idx} ({vocab[idx]}) had {stats[pair]} occurrences")
 

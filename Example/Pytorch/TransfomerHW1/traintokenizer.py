@@ -14,6 +14,7 @@
 """
 import argparse
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -24,6 +25,60 @@ from minbpe import RegexTokenizer
 TOTAL_VOCAB_SIZE = 1024
 EOS = "<|endoftext|>"
 DEFAULT_DATA_DIR = ROOT / "Example" / "data"
+
+
+def format_duration(seconds):
+    seconds = max(0.0, seconds)
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    minutes, sec = divmod(int(seconds), 60)
+    if minutes < 60:
+        return f"{minutes}m{sec:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m"
+
+
+class BPEProgress:
+    """在终端显示 BPE 合并进度、耗时和预计剩余时间。"""
+
+    def __init__(self, total, width=30, min_interval=0.1):
+        self.total = total
+        self.width = width
+        self.min_interval = min_interval
+        self.start = time.monotonic()
+        self.last_update = 0.0
+        self.is_tty = sys.stderr.isatty()
+        self.print_every = max(1, total // 20)
+
+    def __call__(self, step, total, idx, pair, count):
+        now = time.monotonic()
+        finished = step >= total
+        if self.is_tty:
+            due = finished or now - self.last_update >= self.min_interval
+        else:
+            due = finished or step % self.print_every == 0
+        if not due:
+            return
+
+        self.last_update = now
+        ratio = step / total if total else 1.0
+        filled = int(self.width * ratio)
+        bar = "#" * filled + "-" * (self.width - filled)
+        elapsed = now - self.start
+        eta = elapsed / ratio - elapsed if ratio > 0 else 0.0
+        message = (
+            f"BPE [{bar}] {ratio:6.2%} {step}/{total} "
+            f"已用 {format_duration(elapsed)} 剩余 {format_duration(eta)} "
+            f"新 token={idx} 合并次数={count}"
+        )
+
+        if self.is_tty:
+            sys.stderr.write("\r" + message)
+            sys.stderr.flush()
+            if finished:
+                sys.stderr.write("\n")
+        else:
+            sys.stderr.write(message + "\n")
 
 
 def parse_args():
@@ -57,6 +112,11 @@ def parse_args():
         default=1_000_000,
         help="从训练集读取多少个字符用于 BPE 训练",
     )
+    parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="关闭训练进度显示",
+    )
     return parser.parse_args()
 
 
@@ -71,8 +131,10 @@ def main():
         raise FileNotFoundError(f"找不到训练集: {args.train_file}")
 
     eos_id = args.vocab_size - 1
+    num_merges = args.vocab_size - 1 - 256
 
     # 只读取训练集的一部分，先跑通流程；云端可通过 --sample-chars 调大。
+    print(f"读取训练集: {args.train_file} (最多 {args.sample_chars} 字符)", flush=True)
     with args.train_file.open(encoding="utf-8") as f:
         sample = f.read(args.sample_chars)
     if not sample:
@@ -81,11 +143,14 @@ def main():
     # 不让 BPE 把 EOS 标记本身学成普通文本片段。
     train_text = sample.replace(EOS, "\n\n")
 
+    progress = None if args.no_progress else BPEProgress(num_merges)
+    print(f"开始训练 BPE: 读取 {len(train_text)} 字符，目标 {num_merges} 次合并", flush=True)
     tokenizer = RegexTokenizer()
     tokenizer.train(
         train_text,
         vocab_size=args.vocab_size - 1,
         verbose=False,
+        progress=progress,
     )
 
     # 特殊 token 单独分配 ID。

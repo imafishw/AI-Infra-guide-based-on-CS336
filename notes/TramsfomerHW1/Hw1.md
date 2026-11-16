@@ -1,5 +1,7 @@
 # Transformer HW1：从分词到模型组件
 
+> 当前训练工程流程见 [HW1 训练流程笔记：单卡、多卡与易错点](Training.md)。该笔记按 2026-11-16 的实际代码核对；下文早期示例路径和参数与当前入口不同时，以该笔记及 config.py 为准。
+
 本文按实现顺序组织：先准备环境与数据，再训练和加载 tokenizer，最后理解 Embedding、RMSNorm、多头自注意力及其矩阵运算。
 
 ## 1. 环境准备
@@ -1126,3 +1128,49 @@ $$
 `cross_entropy` 内部以数值稳定的方式完成 log-softmax 和正确类别的负对数计算，**直接传 logits，不要提前 softmax**。这里 targets 使用 `torch.long`，ID 范围为 `[0, V-1]`；默认将所有位置的损失取平均，返回一个标量。
 
 最后，`loss.backward()` 计算参数梯度，`optimizer.step()` 才真正更新参数。随机 token 只能检查流程；正式训练需要使用真实文本编码后的 token。
+
+## 5. checkpoint 与 .pt 文件
+
+`.pt` 是 PyTorch 常用的保存文件扩展名，内容由保存代码决定。本项目的 checkpoint 是一个字典，既保存参数张量，也保存模型配置；磁盘上是序列化数据，并非文本。
+
+```text
+best.pt（逻辑结构）
+├── model_config：n_layers、d_model、n_heads、vocab_size 等
+├── model：参数名称 → 张量，如 embedding.weight、layers.0.…
+├── optimizer：优化器状态，恢复训练时使用
+├── step：训练步数
+├── val_loss：验证损失
+└── train_config：训练配置
+```
+
+**配置决定模型怎么搭建，权重决定模型计算时使用哪些数值。** 恢复模型分为两步：先创建结构，再填入训练好的权重。
+
+```python
+checkpoint = torch.load("best.pt", map_location="cpu", weights_only=True)
+
+config_data = dict(checkpoint["model_config"])
+config_data["device"] = device
+model = TransformerLM(TransformerConfig(**config_data))
+model.load_state_dict(checkpoint["model"], strict=True)
+model.to(device)
+model.eval()
+```
+
+一个微型例子：线性层 `y = w₁x₁ + w₂x₂ + b` 可以保存为：
+
+```python
+checkpoint = {
+    "model_config": {"in_features": 2, "out_features": 1},
+    "model": {
+        "weight": torch.tensor([[0.3, 0.7]]),
+        "bias": torch.tensor([0.1]),
+    },
+    "step": 1000,
+}
+torch.save(checkpoint, "example.pt")
+# 加载后 checkpoint["model"]["weight"] 就是参数矩阵。
+```
+
+- 如果只保存 `torch.save(model.state_dict(), "weights.pt")`，文件就只有参数映射，没有单独的模型配置，需要自行提供匹配的结构。
+- `weights_only=True` 限制反序列化的对象类型，并不是只读取 `model` 字段；普通字典、数字、字符串和张量仍可加载。
+- 推理不需要恢复 optimizer；还必须加载训练时同一份 tokenizer，确保 token ID 的含义一致。

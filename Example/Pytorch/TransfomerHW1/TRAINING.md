@@ -6,6 +6,8 @@
 
 在仓库根目录执行。默认词表由 1024 改为 4096，默认 100 万字符训练预计约 22 分钟，实际随机器和文本变化。默认名称为 tinystories-4096，已有产物会拒绝覆盖。
 
+uv run...
+
 ```bash
 # 本机冒烟：需要本地训练/验证文本，路径可自行指定
 python Example/Pytorch/TransfomerHW1/traintokenizer.py --vocab-size 320 --sample-chars 50000 --eval-chars 20000 --output-name smoke-320

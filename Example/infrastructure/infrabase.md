@@ -2,8 +2,7 @@
 
 > 学习目标：从张量形状推导 FLOPs 与存储量，判断计算/带宽瓶颈，并解释梯度累积与激活重算的取舍。
 
-内容依据 [官方 Lecture 2](https://github.com/stanford-cs336/lectures/blob/main/lecture_02.py)。组织方式借鉴 [Cornell 学习中心的笔记法](https://lsc.cornell.edu/how-to-study/taking-notes/cornell-note-taking-system/)：保留提示问题、核心笔记与总结，复习时先遮住正文回答问题。这里采用适合 Markdown 的分节格式，不强行套用纸面双栏。
-
+内容依据 [官方 Lecture 2](https://github.com/stanford-cs336/lectures/blob/main/lecture_02.py)。
 **阅读主线：形状与 FLOPs → 带宽与 Roofline → 训练状态与内存 → 优化策略 → 资源估算 → 工程综合题。** 课件假设与补充解释分别标明；所有资源数字都是概算，不是实际设备测量。
 
 ## 目录

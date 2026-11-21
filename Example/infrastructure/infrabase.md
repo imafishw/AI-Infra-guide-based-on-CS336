@@ -7,6 +7,8 @@
 
 ## 目录
 
+**知识点（由浅入深）**
+
 - [1. 符号与计量：先分清容量、工作量和速度](#section-1)
 - [2. Compute for one step：为什么是 6BN？](#section-2)
 - [3. 从 Arithmetic intensity 到 Roofline，再到 MFU](#section-3)
@@ -14,9 +16,12 @@
 - [5. Memory：一次训练需要存哪些东西？](#section-5)
 - [6. Gradient accumulation：用小批次累积出大批次梯度](#section-6)
 - [7. Activation checkpointing：少存激活，反向时重算](#section-7)
-- [8. 用 1024 张 H100 训练 70B 模型、处理 15T tokens，需要多久？](#section-8)
-- [9. 用 AdamW 在 8 张 80 GB H100 上，最多能训练多大的模型？](#section-9)
-- [10. 一页回顾：根据占用来源选择方法](#section-10)
+- [8. 一页回顾：根据占用来源选择方法](#section-8)
+
+**例题（应用知识点）**
+
+- [9. 用 1024 张 H100 训练 70B 模型、处理 15T tokens，需要多久？](#section-9)
+- [10. 用 AdamW 在 8 张 80 GB H100 上，最多能训练多大的模型？](#section-10)
 - [11. 工程综合例题：显存够，为什么推理仍然慢？](#section-11)
 
 <a id="section-1"></a>
@@ -455,7 +460,23 @@ $$
 
 <a id="section-8"></a>
 
-## 8. 用 1024 张 H100 训练 70B 模型、处理 15T tokens，需要多久？
+## 8. 一页回顾：根据占用来源选择方法
+
+> 自测提示：面对 OOM 和低吞吐，分别先检查什么？
+
+| 当前瓶颈 | 优先理解的办法 | 代价或边界 |
+|---|---|---|
+| batch 太大导致激活占用高 | 梯度累积 | microbatch 变小，吞吐可能下降 |
+| 深层网络保存中间结果太多 | 激活 checkpointing | 反向阶段增加前向重计算 |
+| 优化器状态占用高 | 核对状态份数与精度，再考虑分片等方案 | 上述两种激活优化不能直接解决状态占用 |
+| 显存够但吞吐低 | 用 F/Q 与 P/W 判断瓶颈，参考 Roofline 与实测 MFU | 低 MFU 不能单独证明带宽受限 |
+| 想估算一个训练步 | 参数 N，激活 BDL，计算约 6BN | 区分估算假设与实际峰值测量 |
+
+两种激活优化可以一起用：先把大 batch 分成 microbatch，再对每个 microbatch 的模型执行激活 checkpointing。复习时始终问：**保存的是什么、保存多久、改变哪个量才能减少它、代价是什么？**
+
+<a id="section-9"></a>
+
+## 9. 用 1024 张 H100 训练 70B 模型、处理 15T tokens，需要多久？
 
 > 自测提示：为什么不能直接用峰值算力估算训练时间？
 
@@ -506,9 +527,9 @@ $$
 t_{\mathrm{train}}\approx\frac{6NT}{n_{\mathrm{GPU}}P\,\mathrm{MFU}}
 $$
 
-<a id="section-9"></a>
+<a id="section-10"></a>
 
-## 9. 用 AdamW 在 8 张 80 GB H100 上，最多能训练多大的模型？
+## 10. 用 AdamW 在 8 张 80 GB H100 上，最多能训练多大的模型？
 
 > 自测提示：为什么把八张 GPU 的显存相加需要额外假设？
 
@@ -553,22 +574,6 @@ num_parameters = (h100_bytes * 8) / bytes_per_parameter
 70B 为 700 亿参数：仅权重 FP32 为 280 GB，BF16 为 140 GB；按每参数 12 bytes 的训练状态假设则为 840 GB。INT8/INT4 的原始权重载荷约为 70/35 GB，但量化元数据与运行时缓存需另计。
 
 $$N_{\max}\lesssim\frac{M_{\mathrm{available}}}{\text{每参数训练状态字节数}}$$
-
-<a id="section-10"></a>
-
-## 10. 一页回顾：根据占用来源选择方法
-
-> 自测提示：面对 OOM 和低吞吐，分别先检查什么？
-
-| 当前瓶颈 | 优先理解的办法 | 代价或边界 |
-|---|---|---|
-| batch 太大导致激活占用高 | 梯度累积 | microbatch 变小，吞吐可能下降 |
-| 深层网络保存中间结果太多 | 激活 checkpointing | 反向阶段增加前向重计算 |
-| 优化器状态占用高 | 核对状态份数与精度，再考虑分片等方案 | 上述两种激活优化不能直接解决状态占用 |
-| 显存够但吞吐低 | 用 F/Q 与 P/W 判断瓶颈，参考 Roofline 与实测 MFU | 低 MFU 不能单独证明带宽受限 |
-| 想估算一个训练步 | 参数 N，激活 BDL，计算约 6BN | 区分估算假设与实际峰值测量 |
-
-两种激活优化可以一起用：先把大 batch 分成 microbatch，再对每个 microbatch 的模型执行激活 checkpointing。复习时始终问：**保存的是什么、保存多久、改变哪个量才能减少它、代价是什么？**
 
 <a id="section-11"></a>
 

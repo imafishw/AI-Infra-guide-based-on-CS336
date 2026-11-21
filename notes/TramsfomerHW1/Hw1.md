@@ -180,6 +180,8 @@ class Embedding(nn.Module):
 
 #### 数学公式
 
+![alt text](image-1.png)
+
 对某个 token 的特征向量 $x=(x_1,\ldots,x_D)$，均方根（Root Mean Square）为：
 
 $$

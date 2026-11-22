@@ -133,7 +133,7 @@ class MultiHeadSelfAttention(nn.Module):
         q = q.transpose(1, 2)
         k = k.transpose(1, 2)
         v = v.transpose(1, 2)
-        # H 为头数，head_dim 为每头维度；K 转置后为 [B, H, head_dim, T]
+        # H 为头数，head_dim 为每头维度；K 转置后为 [B, H, T,head_dim]
         # 新增：为 T 个 token 生成位置编号
         positions = torch.arange(T, device=x.device)  # [T]
         # 新增：按 token 的位置旋转 Q、K，形状不变

@@ -12,7 +12,7 @@ class Rotraypostionembedding(nn.Module):
         self.max_posEmbeding = max_posEmbeding
         # 每一个注意力头有 几个向量位置编码
         self.rotary_dim = rotary_dim
-        self.half = rotary_dim // 2
+        self.half = rotary_dim //  # type: ignore
         # 基础theta
         self.theta = theta
         # 计算的旋转频率 
@@ -38,7 +38,7 @@ class Rotraypostionembedding(nn.Module):
         # 理解到 rotate这里 后续手撕继续刷 
     def forward(self, postions: torch.Tensor, query: Tensor,key: Tensor) -> tuple[Tensor,Tensor]:
         flat = postions.reshape(-1)
-        return 
+        return  # type:ignore
 
 
 if __name__ == "__main__":
